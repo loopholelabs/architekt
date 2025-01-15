@@ -174,6 +174,11 @@ func (peer *Peer[L, R, G]) MigrateFrom(
 			return nil, err
 		}
 
+		// Save dg for later usage, when we want to migrate from here etc
+		migratedPeer.DgLock.Lock()
+		migratedPeer.Dg = dg
+		migratedPeer.DgLock.Unlock()
+
 		migratedPeer.Wait = sync.OnceValue(func() error {
 			defer cancelProtocolCtx()
 

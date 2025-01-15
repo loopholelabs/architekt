@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"strings"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -48,20 +48,17 @@ func (migratedPeer *MigratedPeer[L, R, G]) Resume(
 		},
 	}
 
-	configBasePath := ""
-	for _, device := range migratedPeer.devices {
-		if device.Name == packager.ConfigName {
-			configBasePath = device.Base
+	migratedPeer.DgLock.Lock()
+	packageConfigDevice := migratedPeer.Dg.GetExposedDeviceByName(packager.ConfigName)
+	if packageConfigDevice == nil || packageConfigDevice.Device() == "" {
+		migratedPeer.DgLock.Unlock()
 
-			break
-		}
-	}
-
-	if strings.TrimSpace(configBasePath) == "" {
 		return nil, ErrConfigFileNotFound
 	}
+	packageConfigPath := filepath.Join("/dev", packageConfigDevice.Device())
+	migratedPeer.DgLock.Unlock()
 
-	packageConfigFile, err := os.Open(configBasePath)
+	packageConfigFile, err := os.Open(packageConfigPath)
 	if err != nil {
 		return nil, errors.Join(ErrCouldNotOpenConfigFile, err)
 	}
