@@ -11,9 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
-	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
@@ -40,38 +39,21 @@ func main() {
 	livenessVSockPort := flag.Int("liveness-vsock-port", 25, "Liveness VSock port")
 	agentVSockPort := flag.Int("agent-vsock-port", 26, "Agent VSock port")
 
-	defaultDevices, err := json.Marshal([]snapshotter.SnapshotDevice{
-		{
-			Name:   packager.StateName,
-			Output: filepath.Join("out", "package", "state.bin"),
-		},
-		{
-			Name:   packager.MemoryName,
-			Output: filepath.Join("out", "package", "memory.bin"),
-		},
+	defDevices := make([]snapshotter.SnapshotDevice, 0)
+	for _, n := range common.KnownNames {
+		sd := snapshotter.SnapshotDevice{
+			Name:   n,
+			Output: filepath.Join("out", "package", common.DeviceFilenames[n]),
+		}
+		if n == common.DeviceKernelName ||
+			n == common.DeviceDiskName ||
+			n == common.DeviceOCIName {
+			sd.Output = filepath.Join("out", "blueprint", common.DeviceFilenames[n])
+		}
+		defDevices = append(defDevices, sd)
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 
-		{
-			Name:   packager.KernelName,
-			Input:  filepath.Join("out", "blueprint", "vmlinux"),
-			Output: filepath.Join("out", "package", "vmlinux"),
-		},
-		{
-			Name:   packager.DiskName,
-			Input:  filepath.Join("out", "blueprint", "rootfs.ext4"),
-			Output: filepath.Join("out", "package", "rootfs.ext4"),
-		},
-
-		{
-			Name:   packager.ConfigName,
-			Output: filepath.Join("out", "package", "config.json"),
-		},
-
-		{
-			Name:   "oci",
-			Input:  filepath.Join("out", "blueprint", "oci.ext4"),
-			Output: filepath.Join("out", "package", "oci.ext4"),
-		},
-	})
 	if err != nil {
 		panic(err)
 	}
@@ -103,44 +85,20 @@ func main() {
 		panic(err)
 	}
 
-	var errs error
-	defer func() {
-		if errs != nil {
-			panic(errs)
-		}
-	}()
-
-	goroutineManager := manager.NewGoroutineManager(
-		ctx,
-		&errs,
-		manager.GoroutineManagerHooks{},
-	)
-	defer goroutineManager.Wait()
-	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
-
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt)
 	go func() {
-		done := make(chan os.Signal, 1)
-		signal.Notify(done, os.Interrupt)
-
 		<-done
-
 		log.Println("Exiting gracefully")
-
 		cancel()
 	}()
 
-	if err := snapshotter.CreateSnapshot(
-		goroutineManager.Context(),
-
-		devices,
-
+	err = snapshotter.CreateSnapshot(ctx, devices,
 		snapshotter.VMConfiguration{
 			CPUCount:    *cpuCount,
 			MemorySize:  *memorySize,
 			CPUTemplate: *cpuTemplate,
-
-			BootArgs: *bootArgs,
+			BootArgs:    *bootArgs,
 		},
 		snapshotter.LivenessConfiguration{
 			LivenessVSockPort: uint32(*livenessVSockPort),
@@ -150,18 +108,14 @@ func main() {
 		snapshotter.HypervisorConfiguration{
 			FirecrackerBin: firecrackerBin,
 			JailerBin:      jailerBin,
-
-			ChrootBaseDir: *chrootBaseDir,
-
-			UID: *uid,
-			GID: *gid,
-
-			NetNS:         *netns,
-			NumaNode:      *numaNode,
-			CgroupVersion: *cgroupVersion,
-
-			EnableOutput: *enableOutput,
-			EnableInput:  *enableInput,
+			ChrootBaseDir:  *chrootBaseDir,
+			UID:            *uid,
+			GID:            *gid,
+			NetNS:          *netns,
+			NumaNode:       *numaNode,
+			CgroupVersion:  *cgroupVersion,
+			EnableOutput:   *enableOutput,
+			EnableInput:    *enableInput,
 		},
 		snapshotter.NetworkConfiguration{
 			Interface: *iface,
@@ -171,7 +125,9 @@ func main() {
 			AgentVSockPort: uint32(*agentVSockPort),
 			ResumeTimeout:  *resumeTimeout,
 		},
-	); err != nil {
+	)
+
+	if err != nil {
 		panic(err)
 	}
 

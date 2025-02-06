@@ -15,8 +15,8 @@ import (
 
 	"github.com/loopholelabs/drafter/internal/firecracker"
 	iutils "github.com/loopholelabs/drafter/internal/utils"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
@@ -179,7 +179,7 @@ func CreateSnapshot(
 			defer inputFile.Close()
 
 			if err := os.MkdirAll(filepath.Dir(device.Output), os.ModePerm); err != nil {
-				panic(errors.Join(packager.ErrCouldNotCreateOutputDir, err))
+				panic(errors.Join(common.ErrCouldNotCreateOutputDir, err))
 			}
 
 			outputFile, err := os.OpenFile(device.Output, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
@@ -211,7 +211,7 @@ func CreateSnapshot(
 			}
 		}
 
-		if !slices.Contains(packager.KnownNames, device.Name) || device.Name == packager.DiskName {
+		if !slices.Contains(common.KnownNames, device.Name) || device.Name == common.DeviceDiskName {
 			disks = append(disks, device.Name)
 		}
 	}
@@ -221,7 +221,7 @@ func CreateSnapshot(
 
 		client,
 
-		packager.KernelName,
+		common.DeviceKernelName,
 
 		disks,
 
@@ -288,8 +288,8 @@ func CreateSnapshot(
 
 		client,
 
-		packager.StateName,
-		packager.MemoryName,
+		common.DeviceStateName,
+		common.DeviceMemoryName,
 
 		firecracker.SnapshotTypeFull,
 	); err != nil {
@@ -303,7 +303,7 @@ func CreateSnapshot(
 		panic(errors.Join(ErrCouldNotMarshalPackageConfig, err))
 	}
 
-	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, packager.ConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+	outputFile, err := os.OpenFile(filepath.Join(server.VMPath, common.DeviceConfigName), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 	if err != nil {
 		panic(errors.Join(ErrCouldNotOpenPackageConfigFile, err))
 	}
@@ -313,7 +313,7 @@ func CreateSnapshot(
 		panic(errors.Join(ErrCouldNotWritePackageConfig, err))
 	}
 
-	if err := os.Chown(filepath.Join(server.VMPath, packager.ConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
+	if err := os.Chown(filepath.Join(server.VMPath, common.DeviceConfigName), hypervisorConfiguration.UID, hypervisorConfiguration.GID); err != nil {
 		panic(errors.Join(ErrCouldNotChownPackageConfigFile, err))
 	}
 

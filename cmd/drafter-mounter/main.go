@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -15,9 +16,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/mounter"
-	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
+	"github.com/loopholelabs/silo/pkg/storage/migrator"
 )
 
 type CompositeDevices struct {
@@ -43,7 +45,7 @@ type CompositeDevices struct {
 func main() {
 	defaultDevices, err := json.Marshal([]CompositeDevices{
 		{
-			Name: packager.StateName,
+			Name: common.DeviceStateName,
 
 			Base:    filepath.Join("out", "package", "state.bin"),
 			Overlay: filepath.Join("out", "overlay", "state.bin"),
@@ -62,7 +64,7 @@ func main() {
 			MakeMigratable: true,
 		},
 		{
-			Name: packager.MemoryName,
+			Name: common.DeviceMemoryName,
 
 			Base:    filepath.Join("out", "package", "memory.bin"),
 			Overlay: filepath.Join("out", "overlay", "memory.bin"),
@@ -82,7 +84,7 @@ func main() {
 		},
 
 		{
-			Name: packager.KernelName,
+			Name: common.DeviceKernelName,
 
 			Base:    filepath.Join("out", "package", "vmlinux"),
 			Overlay: filepath.Join("out", "overlay", "vmlinux"),
@@ -101,7 +103,7 @@ func main() {
 			MakeMigratable: true,
 		},
 		{
-			Name: packager.DiskName,
+			Name: common.DeviceDiskName,
 
 			Base:    filepath.Join("out", "package", "rootfs.ext4"),
 			Overlay: filepath.Join("out", "overlay", "rootfs.ext4"),
@@ -121,7 +123,7 @@ func main() {
 		},
 
 		{
-			Name: packager.ConfigName,
+			Name: common.DeviceConfigName,
 
 			Base:    filepath.Join("out", "package", "config.json"),
 			Overlay: filepath.Join("out", "overlay", "config.json"),
@@ -195,7 +197,7 @@ func main() {
 	)
 	defer goroutineManager.Wait()
 	defer goroutineManager.StopAllGoroutines()
-	defer goroutineManager.CreateBackgroundPanicCollector()()
+	//	defer goroutineManager.CreateBackgroundPanicCollector()()
 
 	bubbleSignals := false
 
@@ -256,26 +258,6 @@ func main() {
 		writers,
 
 		mounter.MigrateFromHooks{
-			OnRemoteDeviceReceived: func(remoteDeviceID uint32, name string) {
-				log.Println("Received remote device", remoteDeviceID, "with name", name)
-			},
-			OnRemoteDeviceExposed: func(remoteDeviceID uint32, path string) {
-				log.Println("Exposed remote device", remoteDeviceID, "at", path)
-			},
-			OnRemoteDeviceAuthorityReceived: func(remoteDeviceID uint32, customPayload []byte) {
-				log.Println("Received authority for remote device", remoteDeviceID)
-			},
-			OnRemoteDeviceMigrationCompleted: func(remoteDeviceID uint32) {
-				log.Println("Completed migration of remote device", remoteDeviceID)
-			},
-
-			OnRemoteAllDevicesReceived: func() {
-				log.Println("Received all remote devices")
-			},
-			OnRemoteAllMigrationsCompleted: func() {
-				log.Println("Completed all remote device migrations")
-			},
-
 			OnLocalDeviceRequested: func(localDeviceID uint32, name string) {
 				log.Println("Requested local device", localDeviceID, "with name", name)
 			},
@@ -445,13 +427,13 @@ l:
 
 			defer migratableMounter.Close()
 
-			migrateToDevices := []mounter.MigrateToDevice{}
+			migrateToDevices := []common.MigrateToDevice{}
 			for _, device := range devices {
 				if !device.MakeMigratable {
 					continue
 				}
 
-				migrateToDevices = append(migrateToDevices, mounter.MigrateToDevice{
+				migrateToDevices = append(migrateToDevices, common.MigrateToDevice{
 					Name: device.Name,
 
 					MaxDirtyBlocks: device.MaxDirtyBlocks,
@@ -479,18 +461,6 @@ l:
 						} else {
 							log.Println("Getting dirty blocks for local device", deviceID)
 						}
-					},
-
-					OnBeforeSendDeviceAuthority: func(deviceID uint32, remote bool) []byte {
-						var customPayload []byte
-
-						if remote {
-							log.Println("Sending authority for remote device", deviceID, "with custom payload", customPayload)
-						} else {
-							log.Println("Sending authority for local device", deviceID, "with custom payload", customPayload)
-						}
-
-						return customPayload
 					},
 
 					OnDeviceSent: func(deviceID uint32, remote bool) {
@@ -539,12 +509,31 @@ l:
 					OnAllDevicesSent: func() {
 						log.Println("Sent all devices")
 					},
-					OnAllMigrationsCompleted: func() {
-						log.Println("Completed all device migrations")
+					OnProgress: func(p map[string]*migrator.MigrationProgress) {
+						totalSize := 0
+						totalDone := 0
+						for _, prog := range p {
+							totalSize += (prog.TotalBlocks * prog.BlockSize)
+							totalDone += (prog.ReadyBlocks * prog.BlockSize)
+						}
+
+						perc := float64(0.0)
+						if totalSize > 0 {
+							perc = float64(totalDone) * 100 / float64(totalSize)
+						}
+						// Report overall migration progress
+						log.Printf("# Overall migration Progress # (%d / %d) %.1f%%\n", totalDone, totalSize, perc)
+
+						// Report individual devices
+						for name, prog := range p {
+							log.Printf(" [%s] Progress Migrated Blocks (%d/%d)  %d ready %d total\n", name, prog.MigratedBlocks, prog.TotalBlocks, prog.ReadyBlocks, prog.TotalMigratedBlocks)
+						}
+
 					},
 				},
 			)
 		}(); err != nil {
+			fmt.Printf("ERROR %v\n", err)
 			panic(err)
 		}
 	}

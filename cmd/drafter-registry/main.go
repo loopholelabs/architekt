@@ -12,47 +12,21 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/registry"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]registry.RegistryDevice{
-		{
-			Name:      packager.StateName,
-			Input:     filepath.Join("out", "package", "state.bin"),
+	defDevices := make([]registry.RegistryDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, registry.RegistryDevice{
+			Name:      n,
+			Input:     filepath.Join("out", "package", common.DeviceFilenames[n]),
 			BlockSize: 1024 * 64,
-		},
-		{
-			Name:      packager.MemoryName,
-			Input:     filepath.Join("out", "package", "memory.bin"),
-			BlockSize: 1024 * 64,
-		},
-
-		{
-			Name:      packager.KernelName,
-			Input:     filepath.Join("out", "package", "vmlinux"),
-			BlockSize: 1024 * 64,
-		},
-		{
-			Name:      packager.DiskName,
-			Input:     filepath.Join("out", "package", "rootfs.ext4"),
-			BlockSize: 1024 * 64,
-		},
-
-		{
-			Name:      packager.ConfigName,
-			Input:     filepath.Join("out", "package", "config.json"),
-			BlockSize: 1024 * 64,
-		},
-
-		{
-			Name:      "oci",
-			Input:     filepath.Join("out", "blueprint", "oci.ext4"),
-			BlockSize: 1024 * 64,
-		},
-	})
+		})
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}

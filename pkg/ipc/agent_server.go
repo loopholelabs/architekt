@@ -2,13 +2,13 @@ package ipc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
 	"sync"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 	"github.com/pojntfx/panrpc/go/pkg/rpc"
 )
@@ -179,25 +179,22 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 		select {
 		// Failure case; something failed and the goroutineManager.Context() was cancelled before we got a connection
 		case <-ctx.Done():
+
+			// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
+			select {
+			case <-ready:
+				<-remoteCtx.Done() // Wait here...
+			default:
+			}
+
 			if err := acceptingAgentServer.Close(); err != nil {
 				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
 			}
 			agentServer.Close() // We ignore errors here since we might interrupt a network connection
-
-		// Happy case; we've got a connection and we want to wait with closing the agent's connections until the context, not the internal context is cancelled
-		case <-ready:
-			<-remoteCtx.Done()
-
-			if err := acceptingAgentServer.Close(); err != nil {
-				panic(errors.Join(ErrCouldNotCloseAcceptingAgentServer, err))
-			}
-			agentServer.Close() // We ignore errors here since we might interrupt a network connection
-
-			break
 		}
 	})
 
-	registry := rpc.NewRegistry[R, cbor.RawMessage](
+	registry := rpc.NewRegistry[R, json.RawMessage](
 		agentServer.agentServerLocal,
 
 		&rpc.RegistryHooks{
@@ -215,29 +212,29 @@ func (agentServer *AgentServer[L, R, G]) Accept(
 		// We don't `defer conn.Close` here since Firecracker handles resetting active VSock connections for us
 		defer cancelLinkCtx(nil)
 
-		encoder := cbor.NewEncoder(conn)
-		decoder := cbor.NewDecoder(conn)
+		encoder := json.NewEncoder(conn)
+		decoder := json.NewDecoder(conn)
 
 		if err := registry.LinkStream(
 			linkCtx,
 
-			func(v rpc.Message[cbor.RawMessage]) error {
+			func(v rpc.Message[json.RawMessage]) error {
 				return encoder.Encode(v)
 			},
-			func(v *rpc.Message[cbor.RawMessage]) error {
+			func(v *rpc.Message[json.RawMessage]) error {
 				return decoder.Decode(v)
 			},
 
-			func(v any) (cbor.RawMessage, error) {
-				b, err := cbor.Marshal(v)
+			func(v any) (json.RawMessage, error) {
+				b, err := json.Marshal(v)
 				if err != nil {
 					return nil, err
 				}
 
-				return cbor.RawMessage(b), nil
+				return json.RawMessage(b), nil
 			},
-			func(data cbor.RawMessage, v any) error {
-				return cbor.Unmarshal([]byte(data), v)
+			func(data json.RawMessage, v any) error {
+				return json.Unmarshal([]byte(data), v)
 			},
 
 			nil,

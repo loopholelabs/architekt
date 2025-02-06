@@ -9,40 +9,20 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]packager.PackagerDevice{
-		{
-			Name: packager.StateName,
-			Path: filepath.Join("out", "package", "state.bin"),
-		},
-		{
-			Name: packager.MemoryName,
-			Path: filepath.Join("out", "package", "memory.bin"),
-		},
+	defDevices := make([]common.PackagerDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, common.PackagerDevice{
+			Name: n,
+			Path: filepath.Join("out", "package", common.DeviceFilenames[n]),
+		})
+	}
 
-		{
-			Name: packager.KernelName,
-			Path: filepath.Join("out", "package", "vmlinux"),
-		},
-		{
-			Name: packager.DiskName,
-			Path: filepath.Join("out", "package", "rootfs.ext4"),
-		},
-
-		{
-			Name: packager.ConfigName,
-			Path: filepath.Join("out", "package", "config.json"),
-		},
-
-		{
-			Name: "oci",
-			Path: filepath.Join("out", "blueprint", "oci.ext4"),
-		},
-	})
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}
@@ -55,7 +35,7 @@ func main() {
 
 	flag.Parse()
 
-	var devices []packager.PackagerDevice
+	var devices []common.PackagerDevice
 	if err := json.Unmarshal([]byte(*rawDevices), &devices); err != nil {
 		panic(err)
 	}
@@ -91,17 +71,11 @@ func main() {
 	}()
 
 	if *extract {
-		if err := packager.ExtractPackage(
+		if err := common.ExtractPackage(
 			goroutineManager.Context(),
 
 			*packagePath,
 			devices,
-
-			packager.PackagerHooks{
-				OnBeforeProcessFile: func(name, path string) {
-					log.Println("Extracting device", name, "to", path)
-				},
-			},
 		); err != nil {
 			panic(err)
 		}
@@ -109,17 +83,11 @@ func main() {
 		return
 	}
 
-	if err := packager.ArchivePackage(
+	if err := common.ArchivePackage(
 		goroutineManager.Context(),
 
 		devices,
 		*packagePath,
-
-		packager.PackagerHooks{
-			OnBeforeProcessFile: func(name, path string) {
-				log.Println("Archiving device", name, "from", path)
-			},
-		},
 	); err != nil {
 		panic(err)
 	}

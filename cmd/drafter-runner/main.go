@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/packager"
-	"github.com/loopholelabs/drafter/pkg/peer"
 	"github.com/loopholelabs/drafter/pkg/runner"
+	"github.com/loopholelabs/drafter/pkg/runtimes"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
@@ -30,41 +30,15 @@ type SharableDevice struct {
 }
 
 func main() {
-	defaultDevices, err := json.Marshal([]SharableDevice{
-		{
-			Name:   packager.StateName,
-			Path:   filepath.Join("out", "package", "state.bin"),
+	defDevices := make([]SharableDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, SharableDevice{
+			Name:   n,
+			Path:   filepath.Join("out", "package", common.DeviceFilenames[n]),
 			Shared: false,
-		},
-		{
-			Name:   packager.MemoryName,
-			Path:   filepath.Join("out", "package", "memory.bin"),
-			Shared: false,
-		},
-
-		{
-			Name:   packager.KernelName,
-			Path:   filepath.Join("out", "package", "vmlinux"),
-			Shared: false,
-		},
-		{
-			Name:   packager.DiskName,
-			Path:   filepath.Join("out", "package", "rootfs.ext4"),
-			Shared: false,
-		},
-
-		{
-			Name:   packager.ConfigName,
-			Path:   filepath.Join("out", "package", "config.json"),
-			Shared: false,
-		},
-
-		{
-			Name:   "oci",
-			Path:   filepath.Join("out", "blueprint", "oci.ext4"),
-			Shared: false,
-		},
-	})
+		})
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +90,7 @@ func main() {
 
 	configPath := ""
 	for _, device := range devices {
-		if device.Name == packager.ConfigName {
+		if device.Name == common.DeviceConfigName {
 			configPath = device.Path
 
 			break
@@ -124,7 +98,7 @@ func main() {
 	}
 
 	if strings.TrimSpace(configPath) == "" {
-		panic(peer.ErrConfigFileNotFound)
+		panic(runtimes.ErrConfigFileNotFound)
 	}
 
 	configFile, err := os.Open(configPath)
@@ -196,8 +170,8 @@ func main() {
 			EnableInput:  *enableInput,
 		},
 
-		packager.StateName,
-		packager.MemoryName,
+		common.DeviceStateName,
+		common.DeviceMemoryName,
 	)
 
 	defer func() {

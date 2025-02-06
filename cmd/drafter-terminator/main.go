@@ -11,41 +11,20 @@ import (
 	"os/signal"
 	"path/filepath"
 
-	"github.com/loopholelabs/drafter/pkg/packager"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/terminator"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 func main() {
-	defaultDevices, err := json.Marshal([]terminator.TerminatorDevice{
-		{
-			Name:   packager.StateName,
-			Output: filepath.Join("out", "package", "state.bin"),
-		},
-		{
-			Name:   packager.MemoryName,
-			Output: filepath.Join("out", "package", "memory.bin"),
-		},
-
-		{
-			Name:   packager.KernelName,
-			Output: filepath.Join("out", "package", "vmlinux"),
-		},
-		{
-			Name:   packager.DiskName,
-			Output: filepath.Join("out", "package", "rootfs.ext4"),
-		},
-
-		{
-			Name:   packager.ConfigName,
-			Output: filepath.Join("out", "package", "config.json"),
-		},
-
-		{
-			Name:   "oci",
-			Output: filepath.Join("out", "package", "oci.ext4"),
-		},
-	})
+	defDevices := make([]terminator.TerminatorDevice, 0)
+	for _, n := range common.KnownNames {
+		defDevices = append(defDevices, terminator.TerminatorDevice{
+			Name:   n,
+			Output: filepath.Join("out", "package", common.DeviceFilenames[n]),
+		})
+	}
+	defaultDevices, err := json.Marshal(defDevices)
 	if err != nil {
 		panic(err)
 	}

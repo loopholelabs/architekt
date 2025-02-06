@@ -11,15 +11,15 @@ import (
 
 	"github.com/lithammer/shortuuid/v4"
 	"github.com/loopholelabs/drafter/internal/firecracker"
+	"github.com/loopholelabs/drafter/pkg/common"
 	"github.com/loopholelabs/drafter/pkg/ipc"
-	"github.com/loopholelabs/drafter/pkg/packager"
 	"github.com/loopholelabs/drafter/pkg/snapshotter"
 	"github.com/loopholelabs/drafter/pkg/utils"
 	"github.com/loopholelabs/goroutine-manager/pkg/manager"
 )
 
 type ResumedRunner[L ipc.AgentServerLocal, R ipc.AgentServerRemote[G], G any] struct {
-	Remote R
+	Remote *R
 
 	Wait  func() error
 	Close func() error
@@ -129,12 +129,12 @@ func (runner *Runner[L, R, G]) Resume(
 				}
 
 				if err := os.MkdirAll(filepath.Dir(outputPath), os.ModePerm); err != nil {
-					panic(errors.Join(packager.ErrCouldNotCreateOutputDir, err))
+					panic(errors.Join(common.ErrCouldNotCreateOutputDir, err))
 				}
 
 				outputFile, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
 				if err != nil {
-					return errors.Join(packager.ErrCouldNotOpenOutputFile, err)
+					return errors.Join(common.ErrCouldNotOpenOutputFile, err)
 				}
 				defer outputFile.Close()
 
@@ -245,7 +245,7 @@ func (runner *Runner[L, R, G]) Resume(
 		if err != nil {
 			panic(errors.Join(ErrCouldNotAcceptAgent, err))
 		}
-		resumedRunner.Remote = resumedRunner.acceptingAgent.Remote
+		resumedRunner.Remote = &resumedRunner.acceptingAgent.Remote
 	}
 
 	// We intentionally don't call `wg.Add` and `wg.Done` here since we return the process's wait method
